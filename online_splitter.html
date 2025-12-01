@@ -178,22 +178,22 @@ function buildPivot() {
   // Build body
   const body = document.getElementById("pivotBody");
   body.innerHTML = "";
-
   uniqueTests.forEach(test => {
-    let rowHTML = `<td>${escapeCSV(test)}</td>`;
-    let testTotal = 0;
+  let rowHTML = `<td>${escapeCSV(test)}</td>`;
+  let testTotal = 0;
 
-    uniqueDates.forEach(date => {
-      const key = test + "###" + date;
-      const val = map.get(key) || 0;
-      testTotal += val;
-      rowHTML += `<td>${val}</td>`;
-    });
-
-    rowHTML += `<td><b>${testTotal}</b></td>`;
-
-    body.innerHTML += `<tr>${rowHTML}</tr>`;
+  uniqueDates.forEach(date => {
+    const key = test + "###" + date;
+    const val = map.get(key) || 0;
+    rowHTML += `<td>${val}</td>`;
+    testTotal += val;
   });
+
+  rowHTML += `<td>${testTotal}</td>`;
+
+  pivotBody.innerHTML += `<tr>${rowHTML}</tr>`;
+});
+
 
   document.getElementById("downloadPivot").onclick = downloadPivotCSV;
 }
@@ -209,26 +209,32 @@ function escapeCSV(v) {
 function downloadPivotCSV() {
   let rows = [];
 
-  // Header
-  rows.push(["Name", ...uniqueDates, "Total"]);
+  // Header row
+  rows.push(["Test Name", ...uniqueDates, "Total"]);
 
-  // Rows
+  // Body rows (read from filtered table)
   const trs = document.querySelectorAll("#pivotBody tr");
+
   trs.forEach(tr => {
-    let cols = [...tr.children].map(td => escapeCSV(td.innerText));
+    let cols = [...tr.children].map(td => td.innerText);
     rows.push(cols);
   });
 
-  const csv = rows.map(r=>r.join(",")).join("\n");
+  // Safe CSV (quote every field)
+  const csv = rows.map(r =>
+    r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")
+  ).join("\n");
+
   const blob = new Blob([csv], {type:"text/csv"});
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "pivot.csv";
+  a.download = "pivot_filtered.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
+
 </script>
 
 </body>
