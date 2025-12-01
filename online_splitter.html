@@ -2,18 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Test Summary (XLSX Supported)</title>
+<title>Pivot Test Summary with Status Filter</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
-  body { font-family: Arial; background:#eef2f7; padding:20px; }
-  .container { max-width:1300px; margin:auto; background:#fff; padding:20px; border-radius:10px; }
-  h1,h2 { text-align:center; margin:20px 0; }
-  table { width:100%; border-collapse:collapse; margin-top:10px; }
-  th,td { border:1px solid #ccc; padding:8px; text-align:center; }
-  thead { background:#2563eb; color:#fff; }
+  body { font-family:Arial; background:#eef2f7; padding:20px; }
+  .container { max-width:1400px; margin:auto; background:white; padding:20px; border-radius:10px; }
+  h1,h2 { text-align:center; }
+  table { width:100%; border-collapse:collapse; margin-top:15px; font-size:14px; }
+  th,td { padding:8px; border:1px solid #ccc; text-align:center; }
+  thead { background:#2563eb; color:white; }
   tr:nth-child(even){ background:#f1f5ff; }
-  button { padding:10px 15px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; margin:8px 0; }
+  button { background:#2563eb; color:white; padding:8px 16px; border:none; border-radius:6px; cursor:pointer; margin:10px 0; }
+  select { padding:6px 10px; margin-left:10px; }
 </style>
 </head>
 
@@ -26,54 +27,60 @@
     <input type="file" id="excelFile" accept=".xlsx">
   </label>
 
+  <!-- Table 1 -->
   <h2>Table 1: Overall Test Count (Ignore Status)</h2>
   <button id="downloadOverall">Download Overall CSV</button>
   <table id="overallTable">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Test Name</th>
-        <th>Total Count</th>
-      </tr>
-    </thead>
+    <thead><tr><th>#</th><th>Test Name</th><th>Total Count</th></tr></thead>
     <tbody></tbody>
   </table>
 
-  <h2>Table 2: Date-wise Test Count</h2>
-  <button id="downloadDatewise">Download Datewise CSV</button>
-  <table id="datewiseTable">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Date</th>
-        <th>Test Name</th>
-        <th>Count</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
+  <!-- Table 2 with Status Filter -->
+  <h2>Table 2: Pivot — Test Row-wise, Date Column-wise</h2>
+
+  <label><b>Filter by Status:</b></label>
+  <select id="statusFilter">
+    <option value="ALL">ALL</option>
+  </select>
+
+  <button id="downloadPivot">Download Pivot CSV</button>
+
+  <table id="pivotTable">
+    <thead id="pivotHead"></thead>
+    <tbody id="pivotBody"></tbody>
   </table>
 
 </div>
 
 <script>
-document.getElementById("excelFile").addEventListener("change", handleFile);
+let allRows = [];
+let uniqueDates = [];
+let uniqueTests = [];
+let uniqueStatuses = new Set();
 
-let overallData = [];
-let datewiseData = [];
+document.getElementById("excelFile").addEventListener("change", handleFile);
+document.getElementById("statusFilter").addEventListener("change", buildPivot);
 
 function handleFile(e) {
   const file = e.target.files[0];
   const reader = new FileReader();
+
   reader.onload = evt => {
     const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: "array" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval:"" });
-    process(rows);
+
+    allRows = rows;
+
+    extractStatuses(rows);
+    buildOverall(rows);
+    buildPivot();
   };
+
   reader.readAsArrayBuffer(file);
 }
 
-// Extract only date (ignore time)
+// Extract date only (ignore time)
 function extractDate(v) {
   if (!v) return "";
   if (!isNaN(v)) {
@@ -83,84 +90,133 @@ function extractDate(v) {
   return v.split(" ")[0].trim();
 }
 
-function process(rows) {
-  const overallMap = new Map();
-  const dateMap = new Map();
+// ---- TABLE 1: Overall (ignore status) ----
+function buildOverall(rows) {
+  const map = new Map();
 
   rows.forEach(r => {
-    let date = extractDate(r.BookingDate || r.bookingdate || "");
-    let products = (r.Product || "").split(",").map(x => x.trim()).filter(Boolean);
-
-    products.forEach(t => {
-      // Overall count
-      overallMap.set(t, (overallMap.get(t) || 0) + 1);
-
-      // Date-wise
-      const key = date + "###" + t;
-      dateMap.set(key, (dateMap.get(key) || 0) + 1);
+    const tests = (r.Product || "").split(",").map(x => x.trim()).filter(Boolean);
+    tests.forEach(t => {
+      map.set(t, (map.get(t) || 0) + 1);
     });
   });
 
-  overallData = Array.from(overallMap.entries()).map(([test,count]) => ({ test,count }));
-  overallData.sort((a,b) => b.count - a.count);
+  const data = Array.from(map.entries())
+    .map(([test,count]) => ({ test,count }))
+    .sort((a,b) => b.count - a.count);
 
-  datewiseData = Array.from(dateMap.entries()).map(([key,count]) => {
-    const [date,test] = key.split("###");
-    return { date,test,count };
-  });
+  const body = document.querySelector("#overallTable tbody");
+  body.innerHTML = "";
 
-  datewiseData.sort((a,b) => {
-    const d1 = new Date(a.date.split("/").reverse().join("-"));
-    const d2 = new Date(b.date.split("/").reverse().join("-"));
-    return d1 - d2 || a.test.localeCompare(b.test);
-  });
-
-  renderTables();
-}
-
-function renderTables() {
-  const overallBody = document.querySelector("#overallTable tbody");
-  overallBody.innerHTML = "";
-  overallData.forEach((r,i) => {
-    overallBody.innerHTML += `
+  data.forEach((r,i) => {
+    body.innerHTML += `
       <tr>
         <td>${i+1}</td>
-        <td>${escape(r.test)}</td>
+        <td>${escapeCSV(r.test)}</td>
         <td>${r.count}</td>
       </tr>`;
   });
 
-  const dateBody = document.querySelector("#datewiseTable tbody");
-  dateBody.innerHTML = "";
-  datewiseData.forEach((r,i) => {
-    dateBody.innerHTML += `
-      <tr>
-        <td>${i+1}</td>
-        <td>${escape(r.date)}</td>
-        <td>${escape(r.test)}</td>
-        <td>${r.count}</td>
-      </tr>`;
+  document.getElementById("downloadOverall").onclick = () =>
+    downloadCSV(data, ["Test Name","Total Count"]);
+}
+
+// ---- Extract unique statuses ----
+function extractStatuses(rows) {
+  uniqueStatuses.clear();
+
+  rows.forEach(r => {
+    let st = (r.Status || r.status || "").trim();
+    if (st) uniqueStatuses.add(st);
   });
 
-  document.getElementById("downloadOverall").onclick = () => downloadCSV(overallData, ["Test Name","Total Count"]);
-  document.getElementById("downloadDatewise").onclick = () => downloadCSV(datewiseData, ["Date","Test Name","Count"]);
+  const dropdown = document.getElementById("statusFilter");
+  dropdown.innerHTML = `<option value="ALL">ALL</option>`;
+
+  uniqueStatuses.forEach(s => {
+    dropdown.innerHTML += `<option value="${s}">${s}</option>`;
+  });
 }
 
-function escape(v){
-  return String(v).replace(/[&<>"']/g, c => (
-    { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]
-  ));
+// ---- TABLE 2: Pivot (with status filter) ----
+function buildPivot() {
+  const statusFilter = document.getElementById("statusFilter").value;
+
+  // Filter rows
+  const rows = allRows.filter(r => {
+    const st = (r.Status || r.status || "").trim();
+    return statusFilter === "ALL" || st === statusFilter;
+  });
+
+  let dateSet = new Set();
+  let testSet = new Set();
+
+  const map = new Map(); // key = test###date -> count
+
+  rows.forEach(r => {
+    const date = extractDate(r.BookingDate || r.bookingdate || "");
+    const tests = (r.Product || "").split(",").map(x => x.trim()).filter(Boolean);
+
+    dateSet.add(date);
+    tests.forEach(t => testSet.add(t));
+
+    tests.forEach(t => {
+      const key = t + "###" + date;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+  });
+
+  uniqueDates = Array.from(dateSet).sort((a,b) => new Date(a.split("/").reverse().join("-")) - new Date(b.split("/").reverse().join("-")));
+  uniqueTests = Array.from(testSet).sort();
+
+  // Build table header
+  const head = document.getElementById("pivotHead");
+  head.innerHTML = "<tr><th>Test Name</th>" +
+                   uniqueDates.map(d=>`<th>${d}</th>`).join("") +
+                   "<th>Total</th></tr>";
+
+  // Build body
+  const body = document.getElementById("pivotBody");
+  body.innerHTML = "";
+
+  uniqueTests.forEach(test => {
+    let rowHTML = `<td>${escapeCSV(test)}</td>`;
+    let testTotal = 0;
+
+    uniqueDates.forEach(date => {
+      const key = test + "###" + date;
+      const val = map.get(key) || 0;
+      testTotal += val;
+      rowHTML += `<td>${val}</td>`;
+    });
+
+    rowHTML += `<td><b>${testTotal}</b></td>`;
+
+    body.innerHTML += `<tr>${rowHTML}</tr>`;
+  });
+
+  document.getElementById("downloadPivot").onclick = downloadPivotCSV;
 }
 
-function downloadCSV(data, headers) {
-  let rows = [headers];
+// -------- CSV ESCAPE ----------
+function escapeCSV(v) {
+  const s = String(v);
+  if (/[" ,\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+  return s;
+}
 
-  data.forEach(r => {
-    rows.push(Object.values(r).map(v => {
-      let s = String(v);
-      if (s.match(/[",\n]/)) s = '"' + s.replace(/"/g,'""') + '"';
-      return s;
-    }));
+// -------- DOWNLOAD PIVOT CSV ----------
+function downloadPivotCSV() {
+  let rows = [];
+
+  // Header
+  rows.push(["Test Name", ...uniqueDates, "Total"]);
+
+  // Rows
+  const trs = document.querySelectorAll("#pivotBody tr");
+  trs.forEach(tr => {
+    let cols = [...tr.children].map(td => escapeCSV(td.innerText));
+    rows.push(cols);
   });
 
   const csv = rows.map(r=>r.join(",")).join("\n");
@@ -169,7 +225,7 @@ function downloadCSV(data, headers) {
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "export.csv";
+  a.download = "pivot.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
