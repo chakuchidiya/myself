@@ -1,48 +1,146 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Comma Splitter (No Duplicates)</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-        }
-        input, button {
-            padding: 10px;
-            font-size: 16px;
-        }
-        #result {
-            margin-top: 20px;
-            font-size: 18px;
-            color: #333;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Date-wise Test Summary (XLSX Supported)</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body { font-family: Arial; background:#f1f5f9; padding:20px; }
+    .container { max-width:1200px; margin:auto; background:#fff; padding:20px; border-radius:10px; }
+    h1 { text-align:center; margin-bottom:20px; }
+    table { width:100%; border-collapse:collapse; margin-top:20px; }
+    th,td { padding:8px; border-bottom:1px solid #ddd; }
+    thead { background:#2563eb; color:white; }
+    tr:nth-child(even){ background:#f0f4ff; }
+    button { padding:10px 16px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; margin-top:10px; }
+    button:disabled { background:#94a3b8; cursor:not-allowed; }
+  </style>
 </head>
 <body>
 
-<h2>Split String by Comma & Remove Duplicates</h2>
+<div class="container">
+  <h1>Date-wise Test Count (XLSX / Excel Supported)</h1>
 
-<input id="inputText" type="text" placeholder="Enter text with commas" size="50">
-<button onclick="splitComma()">Split</button>
+  <label><b>Upload Excel (.xlsx):</b>
+    <input type="file" id="excelFile" accept=".xlsx">
+  </label>
 
-<div id="result"></div>
+  <br><br>
+  <button id="downloadBtn" disabled>Download CSV</button>
+
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Date</th>
+        <th>Test Name</th>
+        <th>Count</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
 
 <script>
-function splitComma() {
-    const text = document.getElementById("inputText").value;
+let finalData = [];
 
-    // Split by comma, trim, remove empty, remove duplicates using Set
-    const parts = [...new Set(
-        text
-            .split(",")
-            .map(s => s.trim())
-            .filter(s => s.length > 0)
-    )];
+document.getElementById("excelFile").addEventListener("change", handleExcel);
 
-    document.getElementById("result").innerHTML =
-        "<strong>Result:</strong><br>" + parts.join("<br>");
+function handleExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+
+    // Read first sheet
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    processData(json);
+  };
+  reader.readAsArrayBuffer(file);
 }
+
+function extractDate(d) {
+  if (!d) return "";
+
+  // If excel date number (e.g., 45212)
+  if (!isNaN(d)) {
+    const excelEpoch = new Date(1899, 11, 30);
+    const dateObj = new Date(excelEpoch.getTime() + d * 86400000);
+    return dateObj.toLocaleDateString("en-GB");
+  }
+
+  // If string with time → take only date part
+  return d.split(" ")[0].trim();
+}
+
+function processData(rows) {
+  const map = new Map();
+
+  rows.forEach(row => {
+    let dateRaw = row["BookingDate"] || row["bookingdate"] || row["BOOKINGDATE"] || "";
+    let prodRaw = row["Product"] || row["product"] || row["PRODUCT"] || "";
+
+    if (!dateRaw || !prodRaw) return;
+
+    let date = extractDate(dateRaw);
+    let tests = prodRaw.split(",").map(x => x.trim()).filter(Boolean);
+
+    tests.forEach(test => {
+      const key = date + "###" + test;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+  });
+
+  finalData = Array.from(map.entries()).map(([key, count]) => {
+    const [date, test] = key.split("###");
+    return { date, test, count };
+  });
+
+  finalData.sort((a, b) => {
+    const da = new Date(a.date.split("/").reverse().join("-"));
+    const db = new Date(b.date.split("/").reverse().join("-"));
+    return da - db || a.test.localeCompare(b.test);
+  });
+
+  renderTable();
+}
+
+function renderTable() {
+  const body = document.querySelector("#resultTable tbody");
+  body.innerHTML = "";
+
+  finalData.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${r.date}</td>
+      <td>${r.test}</td>
+      <td>${r.count}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  document.getElementById("downloadBtn").disabled = finalData.length === 0;
+}
+
+document.getElementById("downloadBtn").addEventListener("click", () => {
+  const rows = [["Date", "Test Name", "Count"], ...finalData.map(r => [r.date, r.test, r.count])];
+  const csv = rows.map(r => r.join(",")).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "date_test_summary.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+});
 </script>
 
 </body>
