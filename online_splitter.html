@@ -1,35 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Date-wise Test Summary (XLSX Supported)</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<meta charset="UTF-8">
+<title>Test Summary (XLSX Supported)</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <style>
-    body { font-family: Arial; background:#f1f5f9; padding:20px; }
-    .container { max-width:1200px; margin:auto; background:#fff; padding:20px; border-radius:10px; }
-    h1 { text-align:center; margin-bottom:20px; }
-    table { width:100%; border-collapse:collapse; margin-top:20px; }
-    th,td { padding:8px; border-bottom:1px solid #ddd; }
-    thead { background:#2563eb; color:white; }
-    tr:nth-child(even){ background:#f0f4ff; }
-    button { padding:10px 16px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; margin-top:10px; }
-    button:disabled { background:#94a3b8; cursor:not-allowed; }
-  </style>
+<style>
+  body { font-family: Arial; background:#eef2f7; padding:20px; }
+  .container { max-width:1300px; margin:auto; background:#fff; padding:20px; border-radius:10px; }
+  h1,h2 { text-align:center; margin:20px 0; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th,td { border:1px solid #ccc; padding:8px; text-align:center; }
+  thead { background:#2563eb; color:#fff; }
+  tr:nth-child(even){ background:#f1f5ff; }
+  button { padding:10px 15px; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; margin:8px 0; }
+</style>
 </head>
-<body>
 
+<body>
 <div class="container">
-  <h1>Date-wise Test Count (XLSX / Excel Supported)</h1>
+
+  <h1>Test Summary</h1>
 
   <label><b>Upload Excel (.xlsx):</b>
     <input type="file" id="excelFile" accept=".xlsx">
   </label>
 
-  <br><br>
-  <button id="downloadBtn" disabled>Download CSV</button>
+  <h2>Table 1: Overall Test Count (Ignore Status)</h2>
+  <button id="downloadOverall">Download Overall CSV</button>
+  <table id="overallTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Test Name</th>
+        <th>Total Count</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  <table id="resultTable">
+  <h2>Table 2: Date-wise Test Count</h2>
+  <button id="downloadDatewise">Download Datewise CSV</button>
+  <table id="datewiseTable">
     <thead>
       <tr>
         <th>#</th>
@@ -40,107 +52,127 @@
     </thead>
     <tbody></tbody>
   </table>
+
 </div>
 
 <script>
-let finalData = [];
+document.getElementById("excelFile").addEventListener("change", handleFile);
 
-document.getElementById("excelFile").addEventListener("change", handleExcel);
+let overallData = [];
+let datewiseData = [];
 
-function handleExcel(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
+function handleFile(e) {
+  const file = e.target.files[0];
   const reader = new FileReader();
-  reader.onload = (e) => {
-    const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: 'array' });
-
-    // Read first sheet
+  reader.onload = evt => {
+    const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: "array" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-    processData(json);
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval:"" });
+    process(rows);
   };
   reader.readAsArrayBuffer(file);
 }
 
-function extractDate(d) {
-  if (!d) return "";
-
-  // If excel date number (e.g., 45212)
-  if (!isNaN(d)) {
-    const excelEpoch = new Date(1899, 11, 30);
-    const dateObj = new Date(excelEpoch.getTime() + d * 86400000);
-    return dateObj.toLocaleDateString("en-GB");
+// Extract only date (ignore time)
+function extractDate(v) {
+  if (!v) return "";
+  if (!isNaN(v)) {
+    const base = new Date(1899,11,30);
+    return new Date(base.getTime() + v*86400000).toLocaleDateString("en-GB");
   }
-
-  // If string with time → take only date part
-  return d.split(" ")[0].trim();
+  return v.split(" ")[0].trim();
 }
 
-function processData(rows) {
-  const map = new Map();
+function process(rows) {
+  const overallMap = new Map();
+  const dateMap = new Map();
 
-  rows.forEach(row => {
-    let dateRaw = row["BookingDate"] || row["bookingdate"] || row["BOOKINGDATE"] || "";
-    let prodRaw = row["Product"] || row["product"] || row["PRODUCT"] || "";
+  rows.forEach(r => {
+    let date = extractDate(r.BookingDate || r.bookingdate || "");
+    let products = (r.Product || "").split(",").map(x => x.trim()).filter(Boolean);
 
-    if (!dateRaw || !prodRaw) return;
+    products.forEach(t => {
+      // Overall count
+      overallMap.set(t, (overallMap.get(t) || 0) + 1);
 
-    let date = extractDate(dateRaw);
-    let tests = prodRaw.split(",").map(x => x.trim()).filter(Boolean);
-
-    tests.forEach(test => {
-      const key = date + "###" + test;
-      map.set(key, (map.get(key) || 0) + 1);
+      // Date-wise
+      const key = date + "###" + t;
+      dateMap.set(key, (dateMap.get(key) || 0) + 1);
     });
   });
 
-  finalData = Array.from(map.entries()).map(([key, count]) => {
-    const [date, test] = key.split("###");
-    return { date, test, count };
+  overallData = Array.from(overallMap.entries()).map(([test,count]) => ({ test,count }));
+  overallData.sort((a,b) => b.count - a.count);
+
+  datewiseData = Array.from(dateMap.entries()).map(([key,count]) => {
+    const [date,test] = key.split("###");
+    return { date,test,count };
   });
 
-  finalData.sort((a, b) => {
-    const da = new Date(a.date.split("/").reverse().join("-"));
-    const db = new Date(b.date.split("/").reverse().join("-"));
-    return da - db || a.test.localeCompare(b.test);
+  datewiseData.sort((a,b) => {
+    const d1 = new Date(a.date.split("/").reverse().join("-"));
+    const d2 = new Date(b.date.split("/").reverse().join("-"));
+    return d1 - d2 || a.test.localeCompare(b.test);
   });
 
-  renderTable();
+  renderTables();
 }
 
-function renderTable() {
-  const body = document.querySelector("#resultTable tbody");
-  body.innerHTML = "";
-
-  finalData.forEach((r, i) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${i + 1}</td>
-      <td>${r.date}</td>
-      <td>${r.test}</td>
-      <td>${r.count}</td>
-    `;
-    body.appendChild(tr);
+function renderTables() {
+  const overallBody = document.querySelector("#overallTable tbody");
+  overallBody.innerHTML = "";
+  overallData.forEach((r,i) => {
+    overallBody.innerHTML += `
+      <tr>
+        <td>${i+1}</td>
+        <td>${escape(r.test)}</td>
+        <td>${r.count}</td>
+      </tr>`;
   });
 
-  document.getElementById("downloadBtn").disabled = finalData.length === 0;
+  const dateBody = document.querySelector("#datewiseTable tbody");
+  dateBody.innerHTML = "";
+  datewiseData.forEach((r,i) => {
+    dateBody.innerHTML += `
+      <tr>
+        <td>${i+1}</td>
+        <td>${escape(r.date)}</td>
+        <td>${escape(r.test)}</td>
+        <td>${r.count}</td>
+      </tr>`;
+  });
+
+  document.getElementById("downloadOverall").onclick = () => downloadCSV(overallData, ["Test Name","Total Count"]);
+  document.getElementById("downloadDatewise").onclick = () => downloadCSV(datewiseData, ["Date","Test Name","Count"]);
 }
 
-document.getElementById("downloadBtn").addEventListener("click", () => {
-  const rows = [["Date", "Test Name", "Count"], ...finalData.map(r => [r.date, r.test, r.count])];
-  const csv = rows.map(r => r.join(",")).join("\n");
+function escape(v){
+  return String(v).replace(/[&<>"']/g, c => (
+    { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]
+  ));
+}
 
-  const blob = new Blob([csv], { type: "text/csv" });
+function downloadCSV(data, headers) {
+  let rows = [headers];
+
+  data.forEach(r => {
+    rows.push(Object.values(r).map(v => {
+      let s = String(v);
+      if (s.match(/[",\n]/)) s = '"' + s.replace(/"/g,'""') + '"';
+      return s;
+    }));
+  });
+
+  const csv = rows.map(r=>r.join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
   const url = URL.createObjectURL(blob);
+
   const a = document.createElement("a");
   a.href = url;
-  a.download = "date_test_summary.csv";
+  a.download = "export.csv";
   a.click();
   URL.revokeObjectURL(url);
-});
+}
 </script>
 
 </body>
