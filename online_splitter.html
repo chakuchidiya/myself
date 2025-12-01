@@ -31,7 +31,7 @@
   <h2>Table 1: Overall Test Count (Ignore Status)</h2>
   <button id="downloadOverall">Download Overall CSV</button>
   <table id="overallTable">
-    <thead><tr><th>#</th><th>Test Name</th><th>Total Count</th></tr></thead>
+    <thead><tr><th>#</th><th>Name</th><th>Total Count</th></tr></thead>
     <tbody></tbody>
   </table>
 
@@ -118,7 +118,7 @@ function buildOverall(rows) {
   });
 
   document.getElementById("downloadOverall").onclick = () =>
-    downloadCSV(data, ["Test Name","Total Count"]);
+    downloadCSV(data, ["Name","Total Count"]);
 }
 
 // ---- Extract unique statuses ----
@@ -171,7 +171,7 @@ function buildPivot() {
 
   // Build table header
   const head = document.getElementById("pivotHead");
-  head.innerHTML = "<tr><th>Test Name</th>" +
+  head.innerHTML = "<tr><th>Name</th>" +
                    uniqueDates.map(d=>`<th>${d}</th>`).join("") +
                    "<th>Total</th></tr>";
 
@@ -210,7 +210,7 @@ function downloadPivotCSV() {
   let rows = [];
 
   // Header
-  rows.push(["Test Name", ...uniqueDates, "Total"]);
+  rows.push(["Name", ...uniqueDates, "Total"]);
 
   // Rows
   const trs = document.querySelectorAll("#pivotBody tr");
