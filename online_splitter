@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Comma Splitter (No Duplicates)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Split String by Comma & Remove Duplicates</h2>
+
+<input id="inputText" type="text" placeholder="Enter text with commas" size="50">
+<button onclick="splitComma()">Split</button>
+
+<div id="result"></div>
+
+<script>
+function splitComma() {
+    const text = document.getElementById("inputText").value;
+
+    // Split by comma, trim, remove empty, remove duplicates using Set
+    const parts = [...new Set(
+        text
+            .split(",")
+            .map(s => s.trim())
+            .filter(s => s.length > 0)
+    )];
+
+    document.getElementById("result").innerHTML =
+        "<strong>Result:</strong><br>" + parts.join("<br>");
+}
+</script>
+
+</body>
+</html>
